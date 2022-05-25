@@ -18,9 +18,9 @@ import {OwnableUpgradeable} from "openzeppelin-contracts-upgradeable/access/Owna
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 /** 
- * @notice Router is a contract for routing token swaps through various defined routes. 
- * It takes a modular approach to swapping and can go through multiple routes, as encoded in the 
- * Node array which corresponds to a route. A path is defined as routes[fromToken][toToken]. 
+ * @notice Router is a contract for routing token swaps through various defined globalRoutes. 
+ * It takes a modular approach to swapping and can go through multiple globalRoutes, as encoded in the 
+ * GlobalNode array which corresponds to a route. A path is defined as globalRoutes[fromToken][toToken]. 
  */
 
 contract Router is OwnableUpgradeable {
@@ -28,6 +28,7 @@ contract Router is OwnableUpgradeable {
 
     address public traderJoeRouter;
     address public aaveLendingPool;
+    event GlobalRouteSet(address fromToken, address toToken, GlobalNode path);
     event RouteSet(address fromToken, address toToken, Node[] path);
     event Swap(
         address caller,
@@ -52,19 +53,33 @@ contract Router is OwnableUpgradeable {
     // 7 = comp-like Token
     // 8 = Yeti vault token
     // 9 = Platypus swap
-    struct Node {
+    struct GlobalNode {
         // Is Joe pair or cToken etc. 
         address protocolSwapAddress;
         uint256 nodeType;
         address tokenIn;
         address tokenOut;
+        // uint256 YUSDRouteDepth; // Length to the root of the node. If last path back to YUSD, depth = 1
         int128 _misc; //Extra info for curve pools
         int128 _in;
         int128 _out;
     }
 
-    // Usage: path = routes[fromToken][toToken]
+    // Keeps data from one node to another
+    struct Node {
+        address tokenIn;
+        address tokenOut;
+    }
+
+    struct CollapseInfo {
+        GlobalNode global;
+    }
+
+    // Mapping from start to end, YqiUSDC -> qiUSDC -> USDC -> YUSD
     mapping(address => mapping(address => Node[])) public routes;
+
+    // Usage: path from qiUSDC -> USDC = globalRoutes[fromToken][toToken]
+    mapping(address => mapping(address => GlobalNode)) public globalRoutes;
 
     // V2 add WAVAX constant variable
     IWAVAX private constant WAVAX = IWAVAX(0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7);
@@ -96,17 +111,28 @@ contract Router is OwnableUpgradeable {
         IERC20(_token).approve(_who, _amount);
     }
 
-    function setRoute(
+    // Set the swap path. 
+    function setRoute( 
         address _fromToken,
         address _toToken,
         Node[] calldata _path
     ) external onlyOwner {
         delete routes[_fromToken][_toToken];
-        for (uint256 i = 0; i < _path.length; i++) {
+        for (uint256 i; i < _path.length; i++) {
             routes[_fromToken][_toToken].push(_path[i]);
         }
-        // routes[_fromToken][_toToken] = _path;
         emit RouteSet(_fromToken, _toToken, _path);
+    }
+
+    // Set the route for an individual edge in the swap tree
+    function setGlobalRoute(
+        address _fromToken,
+        address _toToken,
+        GlobalNode calldata _path
+    ) external onlyOwner {
+        delete globalRoutes[_fromToken][_toToken];
+        globalRoutes[_fromToken][_toToken] = _path;
+        emit GlobalRouteSet(_fromToken, _toToken, _path);
     }
 
     //////////////////////////////////////////////////////////////////////////////////
@@ -525,10 +551,6 @@ contract Router is OwnableUpgradeable {
         );
     }
 
-
-    // Takes the address of the token _in, and gives a certain amount of token out. 
-    // Calls correct swap functions sequentially based on the route which is defined by the 
-    // routes array. 
     function swap(
         address _startingTokenAddress,
         address _endingTokenAddress,
@@ -542,85 +564,86 @@ contract Router is OwnableUpgradeable {
         uint256 amtIn = _amount;
         require(path.length > 0, "No route found");
         for (uint256 i; i < path.length; i++) {
-            if (path[i].nodeType == 1) {
+            GlobalNode storage global = globalRoutes[path[i].tokenIn][path[i].tokenOut];
+            if (global.nodeType == 1) {
                 // Is traderjoe
                 _amount = swapJoePair(
-                    path[i].protocolSwapAddress,
-                    path[i].tokenIn,
-                    path[i].tokenOut,
+                    global.protocolSwapAddress,
+                    global.tokenIn,
+                    global.tokenOut,
                     _amount
                 );
-            } else if (path[i].nodeType == 2) {
+            } else if (global.nodeType == 2) {
                 // Is jlp
-                if (path[i].tokenIn == path[i].protocolSwapAddress) {
+                if (global.tokenIn == global.protocolSwapAddress) {
                     _amount = swapLPToken(
-                        path[i].tokenOut,
-                        path[i].protocolSwapAddress,
+                        global.tokenOut,
+                        global.protocolSwapAddress,
                         _amount,
                         true
                     );
                 } else {
                     _amount = swapLPToken(
-                        path[i].tokenIn,
-                        path[i].protocolSwapAddress,
+                        global.tokenIn,
+                        global.protocolSwapAddress,
                         _amount,
                         false
                     );
                 }
-            } else if (path[i].nodeType == 3) {
+            } else if (global.nodeType == 3) {
                 // Is curve pool
                 _amount = swapCurve(
-                    path[i].tokenIn,
-                    path[i].tokenOut,
-                    path[i].protocolSwapAddress,
+                    global.tokenIn,
+                    global.tokenOut,
+                    global.protocolSwapAddress,
                     _amount,
-                    path[i]._misc,
-                    path[i]._in,
-                    path[i]._out
+                    global._misc,
+                    global._in,
+                    global._out
                 );
-            } else if (path[i].nodeType == 4) {
+            } else if (global.nodeType == 4) {
                 // Is native<->wrap
                 _amount = wrap(
-                    path[i].tokenIn == address(1),
+                    global.tokenIn == address(1),
                     _amount
                 );
-            } else if (path[i].nodeType == 5) {
+            } else if (global.nodeType == 5) {
                 // Is cToken
                 _amount = swapCOMPTokenNative(
-                    path[i].tokenIn,
-                    path[i].protocolSwapAddress,
+                    global.tokenIn,
+                    global.protocolSwapAddress,
                     _amount
                 );
-            } else if (path[i].nodeType == 6) {
+            } else if (global.nodeType == 6) {
                 // Is aToken
                 _amount = swapAAVEToken(
-                    path[i].tokenIn == path[i].protocolSwapAddress
-                        ? path[i].tokenOut
-                        : path[i].tokenIn,
+                    global.tokenIn == global.protocolSwapAddress
+                        ? global.tokenOut
+                        : global.tokenIn,
                     _amount,
-                    path[i].tokenIn == path[i].protocolSwapAddress,
-                    path[i]._misc
+                    global.tokenIn == global.protocolSwapAddress,
+                    global._misc
                 );
-            } else if (path[i].nodeType == 7) {
+            } else if (global.nodeType == 7) {
                 // Is cToken
                 _amount = swapCOMPToken(
-                    path[i].tokenIn,
-                    path[i].protocolSwapAddress,
+                    global.tokenIn,
+                    global.protocolSwapAddress,
                     _amount
                 );
-            } else if (path[i].nodeType == 8) {
+            } else if (global.nodeType == 8) {
                 // Is Yeti Vault Token
                 _amount = swapYetiVaultToken(
-                    path[i].tokenIn,
-                    path[i].protocolSwapAddress,
+                    global.tokenIn,
+                    global.protocolSwapAddress,
                     _amount
                 );
-            } else if (path[i].nodeType == 9) {
+            } else if (global.nodeType == 9) {
                 // Is Platypus pool 
                 _amount = swapPlatypus(
-                    path[i].tokenIn,
-                    path[i].tokenOut,
-                    path[i].protocolSwapAddress,
+                    global.tokenIn,
+                    global.tokenOut,
+                    global.protocolSwapAddress,
                     _amount
                 );
             } else {
@@ -644,4 +667,37 @@ contract Router is OwnableUpgradeable {
         );
         return outAmount;
     }
+
+
+    /** 
+     * @notice Swap all up to one final node (YUSD), eliminating redundant swaps like multiple 
+     * USDC -> YUSD as the final step. Higher priority will occur first. 
+     * Priority will be corresponding to the depth of the swap. For example, USDC --(Curve)--> YUSD will be 
+     * Depth 1, WAVAX --(TJ)--> will be Depth 2, qiAVAX --(Benqi)--> WAVAX will be depth 3, etc. Another swap 
+     * through to result with WAVAX like aAVAX --(Aave)--> WAVAX will also be depth 3. Then, depth 2 and 1 swaps
+     * will occur together instead of redundantly swapping for multiple amounts. 
+     */
+    // function swapCollapse(
+    //     address[] calldata _startingTokenAddresses,
+    //     address _endingTokenAddress,
+    //     uint256[] calldata _amounts,
+    //     uint256 _minSwapAmount
+    // ) internal returns (uint256) {
+    //     uint256 initialOutAmount = IERC20(_endingTokenAddress).balanceOf(
+    //         address(this)
+    //     );
+        
+    //     uint256 amtIn = _amount;
+    //     require(path.length > 0, "No route found");
+    //     require(_startingTokenAddresses.length == _amounts.length, "Input length mismatch");
+    //     // TODO implement with priority queue / heap structure
+    //     // 1. Initialize priority queue with initial starting token addresses. 
+    //     for (uint i; i < _startingTokenAddresses.length; ++i) {
+    //         Node[] memory path = routes[_startingTokenAddresses[i]][_endingTokenAddress];
+    //         GlobalNode global = globalRoutes[path[i].tokenIn][path[i].tokenOut];
+    //     }
+
+    //     // 2. 
+
+    // }
 }
