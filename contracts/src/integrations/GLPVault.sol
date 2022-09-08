@@ -24,14 +24,14 @@ import "src/interfaces/IYetiGLPMinter.sol";
 
 contract GLPVault is BareVault {
     ERC20 public WAVAXToken; 
-    IGMXRewardRouter public GMXRewardRouter = IGMXRewardRouter(0x82147C5A7E850eA4E28155DF107F2590fD4ba327);
+    IGMXRewardRouter public constant GMXRewardRouter = IGMXRewardRouter(0x82147C5A7E850eA4E28155DF107F2590fD4ba327);
 
     // There is a mint time limit on GLP. If you mint from an address, you can't send for 15 
     // minutes. This contract will mint the GLP first then handle the time limits. 
     IYetiGLPMinter public yetiGLPMinter;
 
     // staked GLP contract, used for transfer in and out of GLP which is already staked. 
-    ERC20 public sGLP = ERC20(0x0b82a1aD2138E9f62454ac41b702B64e0b73d57b);
+    ERC20 public constant sGLP = ERC20(0x0b82a1aD2138E9f62454ac41b702B64e0b73d57b);
 
     ICollateralGate public collateralGate;
     

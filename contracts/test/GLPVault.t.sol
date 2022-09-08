@@ -37,7 +37,7 @@ contract TestGLPVault is DSTest {
     // Staked GMX
     IERC20 public constant sbfGMX = IERC20(0x4d268a7d4C16ceB5a606c173Bd974984343fea13);
 
-    address constant fsGLPHolder = 0x200c8695c4e6c50A5eCBF56E7419b42c807F79c1;
+    address constant fsGLPHolder = 0xFB505Aa37508B641CE4D8f066867Db3B3F66185D;
 
 
     function setUp() public {
@@ -157,6 +157,18 @@ contract TestGLPVault is DSTest {
         vault.redeem(vault.balanceOf(address(this)));
         assertTrue(amt < fsGLP.balanceOf(address(this)), "Balances did not increase");
         return amt;
+    }
+
+    function testVanillaDepositNEmergencyRedeem(uint96 amt) public returns (uint) {
+        if (amt > underlyingBalance || amt<vault.MIN_FIRST_MINT()) {
+            return 0;
+        }
+        sGLP.approve(address(vault), amt);
+        vault.deposit(amt);
+        vm.warp(block.timestamp + 100 days);
+
+        vault.emergencyRedeem(amt/2);
+        assertTrue(vault.lastReinvestTime() < block.timestamp, "Should not have compounded");
     }
 
     // The GLP contract can only mint once every 15 minutes for our minter address. 

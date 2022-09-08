@@ -45,6 +45,12 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     event AdminFeePaid(address caller, uint256 amount);
     event Deposit(address indexed caller, address indexed owner, uint256 assets, uint256 shares);
 
+    event FeesChanged(uint256 adminFee, uint256 callerFee);
+    event MaxReinvestStaleChanged(uint256 maxReinvestStale);
+    event FeeRecipientChanged(address feerecipient);
+    event RewardTokenAdded(address token);
+    event RewardTokenDeprecated(address _token);
+
     event Withdraw(
         address indexed caller,
         address indexed receiver,
@@ -60,6 +66,8 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
      */
     uint256[49] private __gap;
 
+    // Comment for testing purposes
+    constructor() initializer {}
 
     function initialize(
         address _underlying,
@@ -82,31 +90,37 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     
     // Sets fee
     function setFee(uint256 _adminFee, uint256 _callerFee) public onlyOwner {
-        require(_adminFee < 10000 && _callerFee < 10000);
+        require(_adminFee + _callerFee < 10000);
         adminFee = _adminFee;
         callerFee = _callerFee;
+        emit FeesChanged(_adminFee, _callerFee);
     }
 
     // Sets the maxReinvest stale
     function setStale(uint256 _maxReinvestStale) public onlyOwner {
         maxReinvestStale = _maxReinvestStale;
+        emit MaxReinvestStaleChanged(_maxReinvestStale);
     }
 
     // Sets fee recipient which will get a certain adminFee percentage of reinvestments. 
     function setFeeRecipient(address _feeRecipient) public onlyOwner {
         feeRecipient = _feeRecipient;
+        emit FeeRecipientChanged(_feeRecipient);
     }
 
     // Add reward token to list of reward tokens
     function pushRewardToken(address _token) public onlyOwner {
         require(address(_token) != address(0), "0 address");
         rewardTokens.push(_token);
+        emit RewardTokenAdded(_token);
     }
 
     // If for some reason a reward token needs to be deprecated it is set to 0
     function deprecateRewardToken(uint256 _index) public onlyOwner {
         require(_index < rewardTokens.length, "Out of bounds");
+        address token = rewardTokens[_index];
         rewardTokens[_index] = address(0);
+        emit RewardTokenDeprecated(token);
     }
 
     function numRewardTokens() public view returns (uint256) {
@@ -191,8 +205,8 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
             _compound();
         }
         amtToReturn = (underlyingPerReceipt() * _amt) / 1e18;
-        _triggerWithdrawAction(_to, amtToReturn);
         _burn(msg.sender, _amt);
+        _triggerWithdrawAction(_to, amtToReturn);
         emit Withdraw(msg.sender, _to, msg.sender, amtToReturn, _amt);
     }
 
@@ -206,9 +220,8 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
         returns (uint256 amtToReturn)
     {
         amtToReturn = (underlyingPerReceipt() * _amt) / 1e18;
-        _triggerWithdrawAction(msg.sender, amtToReturn);
         _burn(msg.sender, _amt);
-        SafeTransferLib.safeTransfer(underlying, msg.sender, amtToReturn);
+        _triggerWithdrawAction(msg.sender, amtToReturn);
         emit Withdraw(msg.sender, msg.sender, msg.sender, amtToReturn, _amt);
     }
 
