@@ -40,7 +40,8 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     uint256 public callerFee; // Fee in bps paid out to caller on each reinvest
     IWAVAX public WAVAX;
 
-    bool public onlyOwnerCompound;
+    bool public onlyCompounderCompound;
+    address public compounder;
 
     event Reinvested(address caller, uint256 preCompound, uint256 postCompound);
     event CallerFeePaid(address caller, uint256 amount);
@@ -125,8 +126,12 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
         emit RewardTokenDeprecated(token);
     }
 
-    function setOnlyOwnerCompound(bool _onlyOwner) external onlyOwner {
-        onlyOwnerCompound = _onlyOwner;
+    function setOnlyCompounderCompound(bool _onlyOwner) external onlyOwner {
+        onlyCompounderCompound = _onlyOwner;
+    }
+
+    function setCompounder(address _compounder) external onlyOwner {
+        compounder = _compounder;
     }
 
     function numRewardTokens() public view returns (uint256) {

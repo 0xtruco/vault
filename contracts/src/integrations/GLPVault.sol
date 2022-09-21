@@ -163,7 +163,7 @@ contract GLPVault is BareVault {
     // WAVAX, and then that wallet will transfer the GLP into this wallet. After that occurs, 
     // the new underlying per receipt ratio will be correct. 
     function _compound() internal override returns (uint256) {
-        if (onlyOwnerCompound) {
+        if (onlyCompounderCompound && msg.sender != compounder) {
             return 0;
         }
         lastReinvestTime = block.timestamp;
