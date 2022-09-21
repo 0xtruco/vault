@@ -40,6 +40,8 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     uint256 public callerFee; // Fee in bps paid out to caller on each reinvest
     IWAVAX public WAVAX;
 
+    bool public onlyOwnerCompound;
+
     event Reinvested(address caller, uint256 preCompound, uint256 postCompound);
     event CallerFeePaid(address caller, uint256 amount);
     event AdminFeePaid(address caller, uint256 amount);
@@ -67,7 +69,7 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     uint256[49] private __gap;
 
     // Comment for testing purposes
-    constructor() initializer {}
+    // constructor() initializer {} todo 
 
     function initialize(
         address _underlying,
@@ -97,30 +99,34 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     }
 
     // Sets the maxReinvest stale
-    function setStale(uint256 _maxReinvestStale) public onlyOwner {
+    function setStale(uint256 _maxReinvestStale) external onlyOwner {
         maxReinvestStale = _maxReinvestStale;
         emit MaxReinvestStaleChanged(_maxReinvestStale);
     }
 
     // Sets fee recipient which will get a certain adminFee percentage of reinvestments. 
-    function setFeeRecipient(address _feeRecipient) public onlyOwner {
+    function setFeeRecipient(address _feeRecipient) external onlyOwner {
         feeRecipient = _feeRecipient;
         emit FeeRecipientChanged(_feeRecipient);
     }
 
     // Add reward token to list of reward tokens
-    function pushRewardToken(address _token) public onlyOwner {
+    function pushRewardToken(address _token) external onlyOwner {
         require(address(_token) != address(0), "0 address");
         rewardTokens.push(_token);
         emit RewardTokenAdded(_token);
     }
 
     // If for some reason a reward token needs to be deprecated it is set to 0
-    function deprecateRewardToken(uint256 _index) public onlyOwner {
+    function deprecateRewardToken(uint256 _index) external onlyOwner {
         require(_index < rewardTokens.length, "Out of bounds");
         address token = rewardTokens[_index];
         rewardTokens[_index] = address(0);
         emit RewardTokenDeprecated(token);
+    }
+
+    function setOnlyOwnerCompound(bool _onlyOwner) external onlyOwner {
+        onlyOwnerCompound = _onlyOwner;
     }
 
     function numRewardTokens() public view returns (uint256) {
@@ -279,6 +285,7 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     // Pays fee to caller to incentivize compounding
     // Pays fee to admin
     function _compound() internal virtual returns (uint256) {
+        lastReinvestTime = block.timestamp;
         _pullRewards();
     }
 }

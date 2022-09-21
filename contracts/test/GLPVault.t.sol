@@ -13,6 +13,7 @@ import "src/integrations/YetiGLPMinter.sol";
 import "./TestCollateralGate.sol";
 
 // This test covers integration for the GLP vault
+// forge test --fork-url="https://api.avax.network/ext/bc/C/rpc" --fork-block-number=19661798 -vvv --match-contract TestGLPVault
 
 contract TestGLPVault is DSTest {
 

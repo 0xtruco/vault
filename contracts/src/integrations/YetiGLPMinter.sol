@@ -36,7 +36,7 @@ contract YetiGLPMinter is IYetiGLPMinter, Initializable {
     IGLPManager public constant GLPManager = IGLPManager(0xe1ae4d4b06A5Fe1fc288f6B4CD72f9F8323B107F);
 
     // Comment for testing purposes
-    constructor() initializer {}
+    // constructor() initializer {} todo 
 
     function initialize(address _GLPVault) public initializer {
         GLPVault = _GLPVault;

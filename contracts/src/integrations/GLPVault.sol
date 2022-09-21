@@ -76,10 +76,9 @@ contract GLPVault is BareVault {
             _amt
         );
 
-        // todo
-        uint256 veYetiToBurn = 0;
-        uint256 yetiToLock = 0;
-        collateralGate.lock(msg.sender, veYetiToBurn, yetiToLock);
+        // Lock for collateral gating. The user who will be locked is the sender
+        // since they are going to receive the tokens. 
+        collateralGate.lock(msg.sender, _amt, msg.sender);
     }
 
     /**
@@ -97,10 +96,63 @@ contract GLPVault is BareVault {
             _amt
         );
 
-        // todo 
-        uint256 yetiToUnlock = 0;
-        collateralGate.unlock(msg.sender, yetiToUnlock);
+        // Unlock from collateral gating. The user who will be unlocked is the sender
+        // regardless of the _to param
+        collateralGate.unlock(msg.sender, _amt, msg.sender); // reverts if it failed
     }
+
+
+    /** 
+     * @notice override transfer in order to unlock and lock accordingly
+     */
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        // Do before transfer to meet functionality requirements for in/out trove lock
+        collateralGate.unlock(msg.sender, amount, msg.sender);
+        collateralGate.lock(to, amount, msg.sender); // reverts if it failed
+
+        balanceOf[msg.sender] -= amount;
+
+        // Cannot overflow because the sum of all user
+        // balances can't exceed the max uint256 value.
+        unchecked {
+            balanceOf[to] += amount;
+        }
+
+        emit Transfer(msg.sender, to, amount);
+
+        return true;
+    }
+
+
+    /** 
+     * @notice override transferFrom in order to unlock and lock accordingly
+     */
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) public override returns (bool) {
+        uint256 allowed = allowance[from][msg.sender]; // Saves gas for limited approvals.
+
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+
+        // Do before transfer to meet functionality requirements for in/out trove lock
+        collateralGate.unlock(msg.sender, amount, msg.sender);
+        collateralGate.lock(to, amount, msg.sender); // reverts if it failed
+
+        balanceOf[from] -= amount;
+
+        // Cannot overflow because the sum of all user
+        // balances can't exceed the max uint256 value.
+        unchecked {
+            balanceOf[to] += amount;
+        }
+
+        emit Transfer(from, to, amount);
+
+        return true;
+    }
+
 
     // Pulls rewards from GMX router and re-stakes the esGMX rewards, while claiming the WAVAX. 
     function _pullRewards() internal override {
@@ -111,12 +163,15 @@ contract GLPVault is BareVault {
     // WAVAX, and then that wallet will transfer the GLP into this wallet. After that occurs, 
     // the new underlying per receipt ratio will be correct. 
     function _compound() internal override returns (uint256) {
+        if (onlyOwnerCompound) {
+            return 0;
+        }
+        lastReinvestTime = block.timestamp;
         // Pull rewards from GMX router. This will auto re-stake esGMX rewards, but claim 
         // all WAVAX rewards.
         uint256 preCompoundUnderlyingValue = _getValueOfUnderlyingPre();
         _pullRewards();
         uint256 WAVAXtoReinvest = WAVAXToken.balanceOf(address(this));
-
 
         // Send fees in WAVAX
         uint256 adminAmt = (WAVAXtoReinvest * adminFee) / 10000;

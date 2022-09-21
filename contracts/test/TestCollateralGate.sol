@@ -7,11 +7,11 @@ import "src/interfaces/ICollateralGate.sol";
 
 contract TestCollateralGate is ICollateralGate {
 
-    function lock(address _user, uint256 _veYETIToBurn, uint256 _YETIToLock) external override {
+    function lock(address _user, uint _collateralAmount, address _origin) external override {
         return;
     }
 
-    function unlock(address _user, uint256 _YETIToUnlock) external override {
+    function unlock(address _user, uint _collateralAmount, address _origin) external override {
         return;
     }
 }
