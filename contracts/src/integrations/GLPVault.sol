@@ -137,7 +137,7 @@ contract GLPVault is BareVault {
         if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
 
         // Do before transfer to meet functionality requirements for in/out trove lock
-        collateralGate.unlock(msg.sender, amount, msg.sender);
+        collateralGate.unlock(from, amount, msg.sender);
         collateralGate.lock(to, amount, msg.sender); // reverts if it failed
 
         balanceOf[from] -= amount;
@@ -163,7 +163,7 @@ contract GLPVault is BareVault {
     // WAVAX, and then that wallet will transfer the GLP into this wallet. After that occurs, 
     // the new underlying per receipt ratio will be correct. 
     function _compound() internal override returns (uint256) {
-        if (onlyCompounderCompound && msg.sender != compounder) {
+        if (compounder != address(0) && msg.sender != compounder) {
             return 0;
         }
         lastReinvestTime = block.timestamp;
