@@ -42,6 +42,8 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
 
     address public compounder;
 
+    uint256 public mintLimit; // Mint limit for the vault, in terms of underlying tokens
+
     event Reinvested(address caller, uint256 preCompound, uint256 postCompound);
     event CallerFeePaid(address caller, uint256 amount);
     event AdminFeePaid(address caller, uint256 amount);
@@ -132,6 +134,13 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
         compounder = _compounder;
     }
 
+    /**
+     * @notice Sets new mint limit, in underlying asset amount.
+     */
+    function setMintLimit(uint256 _newMintLimit) external onlyOwner {
+        mintLimit = _newMintLimit;
+    }
+
     function numRewardTokens() public view returns (uint256) {
         return rewardTokens.length;
     }
@@ -162,6 +171,7 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
     // per underlying and then transfers it to the original sender. 
     function deposit(address _to, uint256 _amt) public nonReentrant returns (uint256 receiptTokens) {
         require(_amt > 0, "0 tokens");
+        _requireMintLimitNotExceeded(_amt);
         // Reinvest if it has been a while since last reinvest
         if (block.timestamp > lastReinvestTime + maxReinvestStale) {
             _compound();
@@ -234,8 +244,24 @@ contract BareVault is ERC20Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgra
         emit Withdraw(msg.sender, msg.sender, msg.sender, amtToReturn, _amt);
     }
 
-    function totalHoldings() public virtual returns (uint256) {
+    function totalHoldings() public view virtual returns (uint256) {
         return underlying.balanceOf(address(this));
+    }
+
+    /**
+     * @notice Requires mint limit is not exceeded, in terms of new underlying. 
+     *  0 mintLimit means no limit
+     * @param _amt in underlying
+     */
+    function _requireMintLimitNotExceeded(uint256 _amt) internal view {
+        if (mintLimit == 0) {
+            return;
+        }
+        uint256 totalUnderlying = totalHoldings();
+        require(
+            totalUnderlying + _amt <= mintLimit,
+            "Mint limit exceeded"
+        );
     }
 
     // Once underlying has been deposited tokens may need to be invested in a staking thing
