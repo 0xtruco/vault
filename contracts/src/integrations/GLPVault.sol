@@ -106,6 +106,7 @@ contract GLPVault is BareVault {
      * @notice override transfer in order to unlock and lock accordingly
      */
     function transfer(address to, uint256 amount) public override returns (bool) {
+        require(to != msg.sender, "can't send to yourself");
         // Do before transfer to meet functionality requirements for in/out trove lock
         collateralGate.unlock(msg.sender, amount, msg.sender);
         collateralGate.lock(to, amount, msg.sender); // reverts if it failed
@@ -132,6 +133,7 @@ contract GLPVault is BareVault {
         address to,
         uint256 amount
     ) public override returns (bool) {
+        require(to != from, "can't send to yourself");
         uint256 allowed = allowance[from][msg.sender]; // Saves gas for limited approvals.
 
         if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
