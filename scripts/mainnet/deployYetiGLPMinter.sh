@@ -8,11 +8,10 @@ cd contracts
 export FOUNDRY_OPTIMIZER_RUNS=1000000
 RPC="https://api.avax.network/ext/bc/C/rpc"
 # RPC="https://api.avax-test.network/ext/bc/C/rpc"
-DEPLOYER2="72990197e5dbe1063b2d560a634444f13b337f2d92efa19b389be51935cdd70e"
 
 forge build --force
 forge config
-CREATION=$(forge create src/integrations/YetiGLPMinter.sol:YetiGLPMinter --rpc-url $RPC --private-key $DEPLOYER2)
+CREATION=$(forge create src/integrations/YetiGLPMinter.sol:YetiGLPMinter --rpc-url $RPC --private-key $DEPLOYER)
 REG="(?:Deployed to: )((?:0x)[a-f0-9]{40})"
 export DEPLOYED=$(echo "$CREATION" | pcregrep -o1 "$REG")
 echo $DEPLOYED
