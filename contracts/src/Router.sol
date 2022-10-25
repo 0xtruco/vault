@@ -13,6 +13,7 @@ import {IPlainPool, ILendingPool, IMetaPool} from "./interfaces/ICurvePool.sol";
 import {IYetiVaultToken} from "./interfaces/IYetiVaultToken.sol";
 import {IWAVAX} from "./interfaces/IWAVAX.sol";
 import {IPlatypusPool} from "./interfaces/IPlatypusPool.sol";
+import {IStargateRouter} from "./interfaces/IStargate.sol";
 
 import {OwnableUpgradeable} from "openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -107,6 +108,13 @@ contract Router is OwnableUpgradeable {
         emit RouteSet(_fromToken, _toToken, _path);
     }
 
+    // Pool which handles deposits in/ out for stargate LP tokens. 
+    IStargateRouter public stargateRouter;
+
+    function setStargateRouter(address _stargateRouter) external onlyOwner {
+        stargateRouter = IStargateRouter(_stargateRouter);
+    }
+
     //////////////////////////////////////////////////////////////////////////////////
     // #1 Swap through Trader Joe
     //////////////////////////////////////////////////////////////////////////////////
@@ -162,59 +170,59 @@ contract Router is OwnableUpgradeable {
         z = x < y ? x : y;
     }
 
-    function _getAmtToSwap(uint256 r0, uint256 totalX)
-        internal
-        pure
-        returns (uint256)
-    {
-        // For optimal amounts, this quickly becomes an algebraic optimization problem
-        // You must account for price impact of the swap to the corresponding token
-        // Optimally, you swap enough of tokenIn such that the ratio of tokenIn_1/tokenIn_2 is the same as reserve1/reserve2 after the swap
-        // Plug _in the uniswap k=xy equation _in the above equality and you will get the following:
-        uint256 sub = (r0 * 998500) / 994009;
-        uint256 toSqrt = totalX * 3976036 * r0 + r0 * r0 * 3988009;
-        return (FixedPointMathLib.sqrt(toSqrt) * 500) / 994009 - sub;
-    }
+    // function _getAmtToSwap(uint256 r0, uint256 totalX)
+    //     internal
+    //     pure
+    //     returns (uint256)
+    // {
+    //     // For optimal amounts, this quickly becomes an algebraic optimization problem
+    //     // You must account for price impact of the swap to the corresponding token
+    //     // Optimally, you swap enough of tokenIn such that the ratio of tokenIn_1/tokenIn_2 is the same as reserve1/reserve2 after the swap
+    //     // Plug _in the uniswap k=xy equation _in the above equality and you will get the following:
+    //     uint256 sub = (r0 * 998500) / 994009;
+    //     uint256 toSqrt = totalX * 3976036 * r0 + r0 * r0 * 3988009;
+    //     return (FixedPointMathLib.sqrt(toSqrt) * 500) / 994009 - sub;
+    // }
 
-    function _getAmountPairOut(
-        uint256 _amountIn,
-        uint256 _reserveIn,
-        uint256 _reserveOut,
-        uint256 _totalSupply
-    ) internal view returns (uint256 amountOut) {
-        // Given token, how much lp token will I get?
+    // function _getAmountPairOut(
+    //     uint256 _amountIn,
+    //     uint256 _reserveIn,
+    //     uint256 _reserveOut,
+    //     uint256 _totalSupply
+    // ) internal view returns (uint256 amountOut) {
+    //     // Given token, how much lp token will I get?
 
-        _amountIn = _getAmtToSwap(_reserveIn, _amountIn);
-        uint256 amountInWithFee = _amountIn * FEE_COMPLIMENT;
-        uint256 numerator = amountInWithFee * _reserveOut;
-        uint256 denominator = _reserveIn * FEE_DENOMINATOR + amountInWithFee;
-        uint256 _amountIn2 = numerator / denominator;
-        // https://github.com/traderjoe-xyz/joe-core/blob/11d6c6a57017b5f890eb7ea3e3a61de245a41ef2/contracts/traderjoe/JoePair.sol#L153
-        amountOut = _min(
-            (_amountIn * _totalSupply) / (_reserveIn + _amountIn),
-            (_amountIn2 * _totalSupply) / (_reserveOut - _amountIn2)
-        );
-    }
+    //     _amountIn = _getAmtToSwap(_reserveIn, _amountIn);
+    //     uint256 amountInWithFee = _amountIn * FEE_COMPLIMENT;
+    //     uint256 numerator = amountInWithFee * _reserveOut;
+    //     uint256 denominator = _reserveIn * FEE_DENOMINATOR + amountInWithFee;
+    //     uint256 _amountIn2 = numerator / denominator;
+    //     // https://github.com/traderjoe-xyz/joe-core/blob/11d6c6a57017b5f890eb7ea3e3a61de245a41ef2/contracts/traderjoe/JoePair.sol#L153
+    //     amountOut = _min(
+    //         (_amountIn * _totalSupply) / (_reserveIn + _amountIn),
+    //         (_amountIn2 * _totalSupply) / (_reserveOut - _amountIn2)
+    //     );
+    // }
 
-    function _getAmountPairIn(
-        uint256 _amountIn,
-        uint256 _reserveIn,
-        uint256 _reserveOut,
-        uint256 _totalSupply
-    ) internal view returns (uint256 amountOut) {
-        // Given lp token, how much token will I get?
-        uint256 amt0 = (_amountIn * _reserveIn) / _totalSupply;
-        uint256 amt1 = (_amountIn * _reserveOut) / _totalSupply;
+    // function _getAmountPairIn(
+    //     uint256 _amountIn,
+    //     uint256 _reserveIn,
+    //     uint256 _reserveOut,
+    //     uint256 _totalSupply
+    // ) internal view returns (uint256 amountOut) {
+    //     // Given lp token, how much token will I get?
+    //     uint256 amt0 = (_amountIn * _reserveIn) / _totalSupply;
+    //     uint256 amt1 = (_amountIn * _reserveOut) / _totalSupply;
 
-        _reserveIn = _reserveIn - amt0;
-        _reserveOut = _reserveOut - amt1;
+    //     _reserveIn = _reserveIn - amt0;
+    //     _reserveOut = _reserveOut - amt1;
 
-        uint256 amountInWithFee = amt0 * FEE_COMPLIMENT;
-        uint256 numerator = amountInWithFee * _reserveOut;
-        uint256 denominator = (_reserveIn * FEE_DENOMINATOR) + amountInWithFee;
-        amountOut = numerator / denominator;
-        amountOut = amountOut + amt1;
-    }
+    //     uint256 amountInWithFee = amt0 * FEE_COMPLIMENT;
+    //     uint256 numerator = amountInWithFee * _reserveOut;
+    //     uint256 denominator = (_reserveIn * FEE_DENOMINATOR) + amountInWithFee;
+    //     amountOut = numerator / denominator;
+    //     amountOut = amountOut + amt1;
+    // }
 
     function swapLPToken(
         address _token,
@@ -222,68 +230,68 @@ contract Router is OwnableUpgradeable {
         uint256 _amountIn,
         bool _LPIn
     ) internal returns (uint256) {
-        address token0 = IJoePair(_pair).token0();
-        address token1 = IJoePair(_pair).token1();
-        if (_LPIn) {
-            IJoeRouter(traderJoeRouter).removeLiquidity(
-                token0,
-                token1,
-                _amountIn,
-                0,
-                0,
-                address(this),
-                block.timestamp
-            );
-            if (token0 == _token) {
-                swapJoePair(
-                    _pair,
-                    token1,
-                    token0,
-                    IERC20(token1).balanceOf(address(this))
-                );
-            } else if (token1 == _token) {
-                swapJoePair(
-                    _pair,
-                    token0,
-                    token1,
-                    IERC20(token0).balanceOf(address(this))
-                );
-            } else {
-                revert("tokenOut is not a token _in the pair");
-            }
-            return IERC20(_token).balanceOf(address(this));
-        } else {
-            (uint112 r0, uint112 r1, uint32 _last) = IJoePair(_pair)
-                .getReserves();
-            if (token0 == _token) {
-                swapJoePair(_pair, _token, token1, _getAmtToSwap(r0, _amountIn));
-                IJoeRouter(traderJoeRouter).addLiquidity(
-                    token0,
-                    token1,
-                    IERC20(token0).balanceOf(address(this)),
-                    IERC20(token1).balanceOf(address(this)),
-                    0,
-                    0,
-                    address(this),
-                    block.timestamp
-                );
-            } else if (token1 == _token) {
-                swapJoePair(_pair, _token, token0, _getAmtToSwap(r1, _amountIn));
-                IJoeRouter(traderJoeRouter).addLiquidity(
-                    token0,
-                    token1,
-                    IERC20(token0).balanceOf(address(this)),
-                    IERC20(token1).balanceOf(address(this)),
-                    0,
-                    0,
-                    address(this),
-                    block.timestamp
-                );
-            } else {
-                revert("tokenOut is not a token _in the pair");
-            }
-            return IERC20(_pair).balanceOf(address(this));
-        }
+    //     address token0 = IJoePair(_pair).token0();
+    //     address token1 = IJoePair(_pair).token1();
+    //     if (_LPIn) {
+    //         IJoeRouter(traderJoeRouter).removeLiquidity(
+    //             token0,
+    //             token1,
+    //             _amountIn,
+    //             0,
+    //             0,
+    //             address(this),
+    //             block.timestamp
+    //         );
+    //         if (token0 == _token) {
+    //             swapJoePair(
+    //                 _pair,
+    //                 token1,
+    //                 token0,
+    //                 IERC20(token1).balanceOf(address(this))
+    //             );
+    //         } else if (token1 == _token) {
+    //             swapJoePair(
+    //                 _pair,
+    //                 token0,
+    //                 token1,
+    //                 IERC20(token0).balanceOf(address(this))
+    //             );
+    //         } else {
+    //             revert("tokenOut is not a token _in the pair");
+    //         }
+    //         return IERC20(_token).balanceOf(address(this));
+    //     } else {
+    //         (uint112 r0, uint112 r1, uint32 _last) = IJoePair(_pair)
+    //             .getReserves();
+    //         if (token0 == _token) {
+    //             swapJoePair(_pair, _token, token1, _getAmtToSwap(r0, _amountIn));
+    //             IJoeRouter(traderJoeRouter).addLiquidity(
+    //                 token0,
+    //                 token1,
+    //                 IERC20(token0).balanceOf(address(this)),
+    //                 IERC20(token1).balanceOf(address(this)),
+    //                 0,
+    //                 0,
+    //                 address(this),
+    //                 block.timestamp
+    //             );
+    //         } else if (token1 == _token) {
+    //             swapJoePair(_pair, _token, token0, _getAmtToSwap(r1, _amountIn));
+    //             IJoeRouter(traderJoeRouter).addLiquidity(
+    //                 token0,
+    //                 token1,
+    //                 IERC20(token0).balanceOf(address(this)),
+    //                 IERC20(token1).balanceOf(address(this)),
+    //                 0,
+    //                 0,
+    //                 address(this),
+    //                 block.timestamp
+    //             );
+    //         } else {
+    //             revert("tokenOut is not a token _in the pair");
+    //         }
+    //         return IERC20(_pair).balanceOf(address(this));
+    //     }
     }
 
 
@@ -401,15 +409,15 @@ contract Router is OwnableUpgradeable {
         address _cToken,
         uint256 _amount
     ) internal returns (uint256) {
-        if (_tokenIn == _cToken) {
-            // Swap ctoken for _token
-            require(ICOMP(_cToken).redeem(_amount) == 0);
-            return address(this).balance;
-        } else {
-            // Swap _token for ctoken
-            ICOMP(_cToken).mint{value:_amount}();
-            return IERC20(_cToken).balanceOf(address(this));
-        }
+        // if (_tokenIn == _cToken) {
+        //     // Swap ctoken for _token
+        //     require(ICOMP(_cToken).redeem(_amount) == 0);
+        //     return address(this).balance;
+        // } else {
+        //     // Swap _token for ctoken
+        //     ICOMP(_cToken).mint{value:_amount}();
+        //     return IERC20(_cToken).balanceOf(address(this));
+        // }
     }
 
 
@@ -423,35 +431,35 @@ contract Router is OwnableUpgradeable {
         bool _AaveIn,
         int128 _misc //Is AAVE V2 or V3?
     ) internal returns (uint256) {
-        if (_misc == 3) {
-            if (_AaveIn) {
-                // Swap Aave for _token
-                _amount = IAAVEV3(aaveLendingPoolV3).withdraw(
-                    _token,
-                    _amount,
-                    address(this)
-                );
-                return _amount;
-            } else {
-                // Swap _token for Aave
-                IAAVEV3(aaveLendingPoolV3).supply(_token, _amount, address(this), 0);
-                return _amount;
-            }
-        } else {
-            if (_AaveIn) {
-                // Swap Aave for _token
-                _amount = IAAVE(aaveLendingPool).withdraw(
-                    _token,
-                    _amount,
-                    address(this)
-                );
-                return _amount;
-            } else {
-                // Swap _token for Aave
-                IAAVE(aaveLendingPool).deposit(_token, _amount, address(this), 0);
-                return _amount;
-            }
-        }
+        // if (_misc == 3) {
+        //     if (_AaveIn) {
+        //         // Swap Aave for _token
+        //         _amount = IAAVEV3(aaveLendingPoolV3).withdraw(
+        //             _token,
+        //             _amount,
+        //             address(this)
+        //         );
+        //         return _amount;
+        //     } else {
+        //         // Swap _token for Aave
+        //         IAAVEV3(aaveLendingPoolV3).supply(_token, _amount, address(this), 0);
+        //         return _amount;
+        //     }
+        // } else {
+        //     if (_AaveIn) {
+        //         // Swap Aave for _token
+        //         _amount = IAAVE(aaveLendingPool).withdraw(
+        //             _token,
+        //             _amount,
+        //             address(this)
+        //         );
+        //         return _amount;
+        //     } else {
+        //         // Swap _token for Aave
+        //         IAAVE(aaveLendingPool).deposit(_token, _amount, address(this), 0);
+        //         return _amount;
+        //     }
+        // }
         
     }
 
@@ -464,16 +472,16 @@ contract Router is OwnableUpgradeable {
         address _cToken,
         uint256 _amount
     ) internal returns (uint256) {
-        if (_tokenIn == _cToken) {
-            // Swap ctoken for _token
-            require(ICOMP(_cToken).redeem(_amount) == 0);
-            address underlying = ICOMP(_cToken).underlying();
-            return IERC20(underlying).balanceOf(address(this));
-        } else {
-            // Swap _token for ctoken
-            require(ICOMP(_cToken).mint(_amount) == 0);
-            return IERC20(_cToken).balanceOf(address(this));
-        }
+        // if (_tokenIn == _cToken) {
+        //     // Swap ctoken for _token
+        //     require(ICOMP(_cToken).redeem(_amount) == 0);
+        //     address underlying = ICOMP(_cToken).underlying();
+        //     return IERC20(underlying).balanceOf(address(this));
+        // } else {
+        //     // Swap _token for ctoken
+        //     require(ICOMP(_cToken).mint(_amount) == 0);
+        //     return IERC20(_cToken).balanceOf(address(this));
+        // }
     }
 
     //////////////////////////////////////////////////////////////////////////////////
@@ -521,6 +529,31 @@ contract Router is OwnableUpgradeable {
             address(this),
             block.timestamp
         );
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////
+    // #10 Stargate pool deposit
+    //////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * @dev swaps through stargate router for LP tokens or to redeem LP tokens. 
+     */
+    function swapStargateToken(
+        address _underlyingToken,
+        address _LPToken,
+        uint256 _amount,
+        int128 _PID,
+        bool _LPIn
+    ) internal returns (uint256) {
+        if (_LPIn) {
+            // Swap LP*token for _token
+            stargateRouter.instantRedeemLocal(uint16(uint128(_PID)), _amount, address(this));
+            return IERC20(_underlyingToken).balanceOf(address(this));
+        } else {
+            // Swap _token for LP*token
+            stargateRouter.addLiquidity(uint256(uint128(_PID)), _amount, address(this));
+            return IERC20(_LPToken).balanceOf(address(this));
+        }
     }
 
 
@@ -621,6 +654,29 @@ contract Router is OwnableUpgradeable {
                     path[i].protocolSwapAddress,
                     _amount
                 );
+            } else if (path[i].nodeType == 10) {
+                // Is stargate LP
+                if (path[i].tokenIn == path[i].protocolSwapAddress) {
+                    // Means that the in token was the LP token and we are swapping
+                    // out to the underlying token. 
+                    _amount = swapStargateToken(
+                        path[i].tokenOut, // underlying token
+                        path[i].protocolSwapAddress, // lp token
+                        _amount, // amount
+                        path[i]._misc, // pid
+                        true // LP In? 
+                    );
+                } else {
+                    // Means that the in token was the underlying token and we are swapping
+                    // in to the LP token. 
+                    _amount = swapStargateToken(
+                        path[i].tokenIn, // underlying token
+                        path[i].protocolSwapAddress, // lp token
+                        _amount, // amount 
+                        path[i]._misc, // pid
+                        false // LP In? 
+                    );
+                }
             } else {
                 revert("Unknown node type");
             }
