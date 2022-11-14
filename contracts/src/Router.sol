@@ -431,35 +431,35 @@ contract Router is OwnableUpgradeable {
         bool _AaveIn,
         int128 _misc //Is AAVE V2 or V3?
     ) internal returns (uint256) {
-        // if (_misc == 3) {
-        //     if (_AaveIn) {
-        //         // Swap Aave for _token
-        //         _amount = IAAVEV3(aaveLendingPoolV3).withdraw(
-        //             _token,
-        //             _amount,
-        //             address(this)
-        //         );
-        //         return _amount;
-        //     } else {
-        //         // Swap _token for Aave
-        //         IAAVEV3(aaveLendingPoolV3).supply(_token, _amount, address(this), 0);
-        //         return _amount;
-        //     }
-        // } else {
-        //     if (_AaveIn) {
-        //         // Swap Aave for _token
-        //         _amount = IAAVE(aaveLendingPool).withdraw(
-        //             _token,
-        //             _amount,
-        //             address(this)
-        //         );
-        //         return _amount;
-        //     } else {
-        //         // Swap _token for Aave
-        //         IAAVE(aaveLendingPool).deposit(_token, _amount, address(this), 0);
-        //         return _amount;
-        //     }
-        // }
+        if (_misc == 3) {
+            if (_AaveIn) {
+                // Swap Aave for _token
+                _amount = IAAVEV3(aaveLendingPoolV3).withdraw(
+                    _token,
+                    _amount,
+                    address(this)
+                );
+                return _amount;
+            } else {
+                // Swap _token for Aave
+                IAAVEV3(aaveLendingPoolV3).supply(_token, _amount, address(this), 0);
+                return _amount;
+            }
+        } else {
+            if (_AaveIn) {
+                // Swap Aave for _token
+                _amount = IAAVE(aaveLendingPool).withdraw(
+                    _token,
+                    _amount,
+                    address(this)
+                );
+                return _amount;
+            } else {
+                // Swap _token for Aave
+                IAAVE(aaveLendingPool).deposit(_token, _amount, address(this), 0);
+                return _amount;
+            }
+        }
         
     }
 
@@ -545,15 +545,15 @@ contract Router is OwnableUpgradeable {
         int128 _PID,
         bool _LPIn
     ) internal returns (uint256) {
-        if (_LPIn) {
-            // Swap LP*token for _token
-            stargateRouter.instantRedeemLocal(uint16(uint128(_PID)), _amount, address(this));
-            return IERC20(_underlyingToken).balanceOf(address(this));
-        } else {
-            // Swap _token for LP*token
-            stargateRouter.addLiquidity(uint256(uint128(_PID)), _amount, address(this));
-            return IERC20(_LPToken).balanceOf(address(this));
-        }
+        // if (_LPIn) {
+        //     // Swap LP*token for _token
+        //     stargateRouter.instantRedeemLocal(uint16(uint128(_PID)), _amount, address(this));
+        //     return IERC20(_underlyingToken).balanceOf(address(this));
+        // } else {
+        //     // Swap _token for LP*token
+        //     stargateRouter.addLiquidity(uint256(uint128(_PID)), _amount, address(this));
+        //     return IERC20(_LPToken).balanceOf(address(this));
+        // }
     }
 
 

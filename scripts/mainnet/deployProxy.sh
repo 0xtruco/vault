@@ -28,7 +28,7 @@ CREATION=$(forge create src/VaultProxy.sol:VaultProxy --rpc-url $RPC --private-k
 --constructor-args \
 $IMPLEMENTATION \
 $ADMIN \
-$INITCALLDATA
+$INITCALLDATA \
 --verify)
 REG="(?:Deployed to: )((?:0x)[a-f0-9]{40})"
 export DEPLOYEDPROXY=$(echo "$CREATION" | pcregrep -o1 "$REG")
