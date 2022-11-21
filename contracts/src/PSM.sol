@@ -307,9 +307,6 @@ contract PSM is ReentrancyGuardUpgradeable, OwnableUpgradeable, IPSM {
 
         // Withdraw from old strategy
         uint256 totalHoldings = strategy.totalHoldings();
-
-        // todo 
-        totalHoldings = 0;
         
         if (totalHoldings != 0) {
             strategy.withdraw(totalHoldings);
